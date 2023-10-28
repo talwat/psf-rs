@@ -6,13 +6,7 @@
 //! This doesn't support the original psf yet, and currently doesn't support glyphs that aren't 8px wide.
 
 #![no_std]
-#![warn(
-    clippy::all,
-    clippy::pedantic,
-    clippy::nursery,
-    clippy::cargo
-)]
-
+#![warn(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
 #![allow(
     clippy::cast_possible_truncation,
     clippy::indexing_slicing,
@@ -89,13 +83,13 @@ impl Font {
     /// # Arguments
     ///
     /// * `raw` - The raw bytes for the font file itself.
-    /// 
+    ///
     /// # Panics
-    /// 
+    ///
     /// * If the file header is incomplete/corrupted in pretty much any way.
     /// * If the magic doesn't match.
     /// * If the file size doesn't correspond with the defined const.
-    /// 
+    ///
     #[inline]
     #[must_use]
     pub fn load(raw: &[u8]) -> Self {
