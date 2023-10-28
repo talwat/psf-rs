@@ -2,4 +2,4 @@
 
 A super simple rust psf2 parser.
 
-Install with `cargo add psf2`
+Install with `cargo add psf-rs`
