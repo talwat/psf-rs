@@ -3,5 +3,5 @@
 version = 3
 
 [[package]]
-name = "psf"
+name = "psf2"
 version = "1.0.0"

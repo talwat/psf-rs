@@ -1,11 +1,11 @@
 [package]
-name = "psf"
+name = "psf2"
 version = "1.0.0"
 edition = "2021"
 authors = [ "talwat" ]
 license = "MIT"
 description = "A super simple no_std psf2 parser for rust."
-documentation = "https://github.com/talwat/psf-rs"
-homepage = "https://github.com/talwat/psf-rs"
-repository = "https://github.com/talwat/psf-rs"
+documentation = "https://github.com/talwat/psf2-rs"
+homepage = "https://github.com/talwat/psf2-rs"
+repository = "https://github.com/talwat/psf2-rs"
 readme = "README.md"
