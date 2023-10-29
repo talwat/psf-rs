@@ -15,18 +15,61 @@
 )]
 
 /// The typo is intentional now :^)
+///
+/// The maximum size a font can be in bytes.
+/// This amount of bytes is allocated on the stack each font!
 const FILE_ZIZE: usize = 8192;
+
+/// Font flags.
+///
+/// Currently, there is only one flag that specifies
+/// whether there is a unicode table or not.
+#[derive(Clone, Copy, Debug)]
+pub struct Flags {
+    /// Whether a unicode table is present or not.
+    ///
+    /// Warning: This crate does not support unicode.
+    /// Unicode is just completely out of the scope of this crate,
+    /// which is intended for embedded or OS usage.
+    pub unicode: bool,
+    pub data: u32,
+}
+
+impl Flags {
+    /// Parses the flags from four bytes.
+    const fn parse(raw: &[u8]) -> Self {
+        Self {
+            data: as_u32_le(raw),
+            unicode: raw[0] == 1,
+        }
+    }
+}
 
 /// The font header.
 #[derive(Clone, Copy, Debug)]
 pub struct Header {
+    /// Magic that is consistent among all psfu files.
     pub magic: [u8; 4],
+
+    /// The version of psfu used. Currently it's always 0.
     pub version: u32,
+
+    /// The size of the header in bytes. Pretty much always 32.
     pub size: u32,
-    pub flags: u32,
+
+    /// Flags that specify a few things about the font. Currently there's only one.
+    pub flags: Flags,
+
+    /// The number of glyphs.
     pub length: u32,
+
+    /// The size in bytes of each glyph.
     pub glyph_size: u32,
+
+    /// The height of each glyph. In this library it always equals `glyph_size`.
     pub glyph_height: u32,
+
+    /// The width of the glyphs.
     pub glyph_width: u32,
 }
 
@@ -44,7 +87,7 @@ pub struct Header {
 #[derive(Debug)]
 pub struct Font {
     pub header: Header,
-    char_data: [u8; FILE_ZIZE - 32],
+    data: [u8; FILE_ZIZE - 32],
 }
 
 impl Font {
@@ -58,10 +101,7 @@ impl Font {
         let from = self.header.glyph_size * (char);
         let to = self.header.glyph_size * (char + 1);
 
-        for (i, byte) in self.char_data[from as usize..to as usize]
-            .iter()
-            .enumerate()
-        {
+        for (i, byte) in self.data[from as usize..to as usize].iter().enumerate() {
             if byte == &0 {
                 continue;
             }
@@ -88,7 +128,7 @@ impl Font {
     ///
     /// * If the file header is incomplete/corrupted in pretty much any way.
     /// * If the magic doesn't match.
-    /// * If the file size doesn't correspond with the defined const.
+    /// * If the file size doesn't is bigger than 8192 bytes.
     ///
     #[inline]
     #[must_use]
@@ -110,13 +150,13 @@ impl Font {
                 magic: [raw[0x0], raw[0x1], raw[0x2], raw[0x3]],
                 version: as_u32_le(&raw[0x4..0x8]),
                 size,
-                flags: as_u32_le(&raw[0xc..0x10]),
+                flags: Flags::parse(&raw[0xc..0x10]),
                 length: as_u32_le(&raw[0x10..0x14]),
                 glyph_size: as_u32_le(&raw[0x14..0x18]),
                 glyph_height: as_u32_le(&raw[0x18..0x1c]),
                 glyph_width: as_u32_le(&raw[0x1c..0x20]),
             },
-            char_data: data[size as usize..].try_into().unwrap(),
+            data: data[size as usize..].try_into().unwrap(),
         };
 
         #[allow(clippy::manual_assert)]
