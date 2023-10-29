@@ -15,7 +15,7 @@
 )]
 
 /// The typo is intentional now :^)
-const FILE_ZIZE: usize = 4969;
+const FILE_ZIZE: usize = 8192;
 
 /// The font header.
 #[derive(Clone, Copy, Debug)]
@@ -95,6 +95,16 @@ impl Font {
     pub fn load(raw: &[u8]) -> Self {
         let size = as_u32_le(&raw[0x8..0xc]);
 
+        // Allocate a slice filled with 0's.
+        // This is a temporary solution that will generally work okay for ASCII fonts.
+        // TODO: Figure out a solution that isn't this hack,
+        // TODO: While still using the stack only.
+        let mut data = [0; FILE_ZIZE];
+
+        // Then copy the font into said slice.
+        // There will be a lot of empty padding.
+        data[..raw.len()].copy_from_slice(raw);
+
         let font = Self {
             header: Header {
                 magic: [raw[0x0], raw[0x1], raw[0x2], raw[0x3]],
@@ -106,7 +116,7 @@ impl Font {
                 glyph_height: as_u32_le(&raw[0x18..0x1c]),
                 glyph_width: as_u32_le(&raw[0x1c..0x20]),
             },
-            char_data: raw[size as usize..].try_into().unwrap(),
+            char_data: data[size as usize..].try_into().unwrap(),
         };
 
         #[allow(clippy::manual_assert)]
