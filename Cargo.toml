@@ -1,6 +1,6 @@
 [package]
 name = "psf-rs"
-version = "1.1.0"
+version = "2.0.0"
 edition = "2021"
 authors = [ "talwat" ]
 license = "MIT"
@@ -11,3 +11,7 @@ repository = "https://github.com/talwat/psf-rs"
 readme = "README.md"
 categories = ["embedded", "encoding", "parsing", "no-std", "text-processing"]
 keywords = ["psf2", "tty", "font", "bitmap", "psf"]
+lto = true
+
+[dependencies]
+byteorder = "1.5.0"

@@ -14,11 +14,16 @@
     clippy::cast_lossless
 )]
 
+use core::panic;
+
+/// Magic bytes that identify psf2.
+const MAGIC: [u8; 4] = [0x72, 0xb5, 0x4a, 0x86];
+
 /// The typo is intentional now :^)
 ///
 /// The maximum size a font can be in bytes.
 /// This amount of bytes is allocated on the stack each font!
-const FILE_ZIZE: usize = 8192;
+const FILE_ZIZE: usize = 0x4000;
 
 /// Font flags.
 ///
@@ -27,19 +32,13 @@ const FILE_ZIZE: usize = 8192;
 #[derive(Clone, Copy, Debug)]
 pub struct Flags {
     /// Whether a unicode table is present or not.
-    ///
-    /// Warning: This crate does not support unicode.
-    /// Unicode is just completely out of the scope of this crate,
-    /// which is intended for embedded or OS usage.
     pub unicode: bool,
-    pub data: u32,
 }
 
 impl Flags {
     /// Parses the flags from four bytes.
     const fn parse(raw: &[u8]) -> Self {
         Self {
-            data: as_u32_le(raw),
             unicode: raw[0] == 1,
         }
     }
@@ -86,26 +85,81 @@ pub struct Header {
 /// ```
 #[derive(Debug)]
 pub struct Font {
+    /// The font header for this font.
     pub header: Header,
+
+    /// The data NOT including the header.
     data: [u8; FILE_ZIZE - 32],
+
+    /// The size of the original font.
+    /// Useful, since the font will be put into an array 0x4000 (16384) bytes long regardless.
+    size: usize,
 }
 
 impl Font {
+    /// Gets the glyph index of a character by using the fonts own unicode table.
+    fn glyph_index(&self, char: u32) -> u32 {
+        // Should work for basic ASCII.
+        if !self.header.flags.unicode || char < 128 {
+            return char;
+        }
+
+        let table = &self.data[(self.header.glyph_size * self.header.length) as usize..self.size];
+        let mut index = 63; // '?' Is a reasonable default.
+
+        for (i, entry) in table.split(|x| x == &0xff).enumerate() {
+            // Rust doesn't expose `encode_utf8_raw` without a feature.
+            // And in interest of keeping this crate on the stable toolchain,
+            // I have to do this less than ideal hack to get it to work.
+            //
+            // I need the `encode_utf8` function as I need to convert the normal
+            // unicode codepoint to valid UTF-8.
+            //
+            // Only allocating 2 bytes because psf2 fonts can only have fonts that
+            // can be described with 2 bytes.
+            let mut utf8_buf = [0; 2];
+            char::from_u32(char).unwrap().encode_utf8(&mut utf8_buf);
+
+            for j in 0..entry.len() {
+                // The `min` just makes sure that it doesn't panic
+                // It does this by either selecting the byte ahead OR the length of the whole entry.
+                let compare = &entry[j..=(j + 1).min(entry.len() - 1)];
+
+                // Using a slice of utf8_buf is a bit of a hack.
+                // Because we don't need to worry about empty space since a match will always be the exact same size.
+                if compare == &utf8_buf[..compare.len()] {
+                    index = i;
+
+                    break;
+                }
+            }
+        }
+
+        index as u32
+    }
+
+    /// Displays a glyph.
+    /// This will NOT trim the glyph, so you will still get the vertical padding.
+    ///
     /// # Arguments
     ///
-    /// * `char` - Pretty self explanitory. A character, that must be ASCII.
+    /// * `char` - Pretty self explanitory. A character or integer, that must represent a glyph on the ASCII table.
     /// * `action` - A closure that takes in 3 values, the bit (always 0 or 1), the x, and the y.
-    pub fn get_char(&self, char: char, mut action: impl FnMut(u8, u8, u8)) {
-        let char = char as u32;
+    ///
+    /// # Panics
+    ///
+    /// * If the character can't be properly converted into a u32.
+    /// * If the character can't be described with 2 bytes or less in UTF-8.
+    pub fn display_glyph<T: TryInto<u32>>(&self, char: T, mut action: impl FnMut(u8, u8, u8)) {
+        let Ok(char) = TryInto::<u32>::try_into(char) else {
+            panic!("invalid character index")
+        };
 
+        let char = self.glyph_index(char);
         let from = self.header.glyph_size * (char);
         let to = self.header.glyph_size * (char + 1);
 
         for (i, byte) in self.data[from as usize..to as usize].iter().enumerate() {
-            if byte == &0 {
-                continue;
-            }
-
             for j in 0..8 {
                 // Bit is a u8 that is always either a 0 or a 1.
                 // "But why not use a boolean?" I hear you ask.
@@ -128,11 +182,9 @@ impl Font {
     ///
     /// * If the file header is incomplete/corrupted in pretty much any way.
     /// * If the magic doesn't match.
-    /// * If the file size doesn't is bigger than 8192 bytes.
-    ///
-    #[inline]
+    /// * If the file size doesn't is bigger than 0x4000 (16384) bytes.
     #[must_use]
-    pub fn load(raw: &[u8]) -> Self {
+    pub fn load(raw: &'static [u8]) -> Self {
         let size = as_u32_le(&raw[0x8..0xc]);
 
         // Allocate a slice filled with 0's.
@@ -157,10 +209,11 @@ impl Font {
                 glyph_width: as_u32_le(&raw[0x1c..0x20]),
             },
             data: data[size as usize..].try_into().unwrap(),
+            size: raw.len(),
         };
 
         #[allow(clippy::manual_assert)]
-        if font.header.magic != [0x72, 0xb5, 0x4a, 0x86] {
+        if font.header.magic != MAGIC {
             panic!("header magic does not match, is this a psf2 font?");
         }
 
@@ -171,7 +224,7 @@ impl Font {
 /// Converts an array of u8's into one u32.
 const fn as_u32_le(array: &[u8]) -> u32 {
     (array[0] as u32)
-        + ((array[1] as u32) << 8)
-        + ((array[2] as u32) << 16)
-        + ((array[3] as u32) << 24)
+        + ((array[1] as u32) << 8_u32)
+        + ((array[2] as u32) << 16_u32)
+        + ((array[3] as u32) << 24_u32)
 }
