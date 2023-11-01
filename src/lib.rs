@@ -123,9 +123,9 @@ impl Font {
         for (i, entry) in table.split(|x| x == &0xff).enumerate() {
             // Rust doesn't expose `encode_utf8_raw` without a feature.
             // And in interest of keeping this crate on the stable toolchain,
-            // I have to do this less than ideal hack to get it to work.
+            // we have to do this less than ideal hack to get it to work.
             //
-            // I need the `encode_utf8` function as I need to convert the normal
+            // We need the `encode_utf8` function to convert the normal
             // unicode codepoint to valid UTF-8.
             //
             // Only allocating 2 bytes because psf2 fonts can only have fonts that
@@ -147,7 +147,7 @@ impl Font {
 
                 let compare = &entry[j..(j + len)];
 
-                // Using a slice of utf8_buf is a bit of a hack.
+                // Using a slice of `utf8` is a bit of a hack.
                 // Because we don't need to worry about empty space since a match will always be the exact same size.
                 if compare == &utf8[..compare.len()] {
                     index = i;
