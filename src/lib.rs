@@ -77,9 +77,11 @@ pub struct Header {
 /// # Example
 ///
 /// ```rust
-/// let font = Font::load(fs::read("./font.psfu").unwrap().as_slice());
+/// use psf_rs::Font;
 ///
-/// font.get_char('A', |bit, x, y| {
+/// let font = Font::load(include_bytes!("../test.psfu"));
+///
+/// font.display_glyph('A', |bit, x, y| {
 ///    // Stuff
 /// });
 /// ```
@@ -98,7 +100,18 @@ pub struct Font {
 
 impl Font {
     /// Gets the glyph index of a character by using the fonts own unicode table.
+    /// This index is where the glyph in the font itself.
+    ///
+    /// # Arguments
+    ///
+    /// * `char` - The Unicode Scalar Value of the character you want the index of. (Just cast to u32)
+    ///
+    /// # Panics
+    ///
+    /// * If the character can't be described with 2 bytes or less in UTF-8.
     fn glyph_index(&self, char: u32) -> u32 {
+        // TODO: Make this function faster, since this can take ages.
+
         // Should work for basic ASCII.
         if !self.header.flags.unicode || char < 128 {
             return char;
@@ -117,17 +130,26 @@ impl Font {
             //
             // Only allocating 2 bytes because psf2 fonts can only have fonts that
             // can be described with 2 bytes.
-            let mut utf8_buf = [0; 2];
-            char::from_u32(char).unwrap().encode_utf8(&mut utf8_buf);
+            let mut utf8 = [0; 4];
+            char::from_u32(char).unwrap().encode_utf8(&mut utf8);
+
+            let mut len = 0;
+            for byte in utf8 {
+                if byte != 0 {
+                    len += 1;
+                }
+            }
 
             for j in 0..entry.len() {
-                // The `min` just makes sure that it doesn't panic
-                // It does this by either selecting the byte ahead OR the length of the whole entry.
-                let compare = &entry[j..=(j + 1).min(entry.len() - 1)];
+                if j + len > entry.len() {
+                    break;
+                }
+
+                let compare = &entry[j..(j + len)];
 
                 // Using a slice of utf8_buf is a bit of a hack.
                 // Because we don't need to worry about empty space since a match will always be the exact same size.
-                if compare == &utf8_buf[..compare.len()] {
+                if compare == &utf8[..compare.len()] {
                     index = i;
 
                     break;
@@ -224,7 +246,7 @@ impl Font {
 /// Converts an array of u8's into one u32.
 const fn as_u32_le(array: &[u8]) -> u32 {
     (array[0] as u32)
-        + ((array[1] as u32) << 8_u32)
-        + ((array[2] as u32) << 16_u32)
-        + ((array[3] as u32) << 24_u32)
+        + ((array[1] as u32) << 8u32)
+        + ((array[2] as u32) << 16u32)
+        + ((array[3] as u32) << 24u32)
 }
