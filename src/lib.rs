@@ -206,7 +206,7 @@ impl Font {
     /// * If the magic doesn't match.
     /// * If the file size doesn't is bigger than 0x4000 (16384) bytes.
     #[must_use]
-    pub fn load(raw: &'static [u8]) -> Self {
+    pub fn load(raw: &[u8]) -> Self {
         let size = as_u32_le(&raw[0x8..0xc]);
 
         // Allocate a slice filled with 0's.
