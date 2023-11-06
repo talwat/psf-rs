@@ -23,6 +23,4 @@ fn glyph_index() {
     assert_eq!(font.glyph_index(OMEGA_2 as u32), 0xea);
 
     assert_ne!(OMEGA_1, OMEGA_2);
-
-    //e294
 }

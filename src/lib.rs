@@ -16,6 +16,8 @@
 
 use core::panic;
 
+mod tests;
+
 /// Magic bytes that identify psf2.
 const MAGIC: [u8; 4] = [0x72, 0xb5, 0x4a, 0x86];
 
