@@ -6,7 +6,12 @@
 //! This doesn't support the original psf yet, and currently doesn't support glyphs that aren't 8px wide.
 
 #![no_std]
-#![warn(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
+#![warn(
+    clippy::all,
+    clippy::pedantic,
+    clippy::nursery,
+    clippy::cargo
+)]
 #![allow(
     clippy::cast_possible_truncation,
     clippy::indexing_slicing,
@@ -16,16 +21,14 @@
 
 use core::panic;
 
+use alloc::collections::BTreeMap;
+
+extern crate alloc;
+
 mod tests;
 
 /// Magic bytes that identify psf2.
 const MAGIC: [u8; 4] = [0x72, 0xb5, 0x4a, 0x86];
-
-/// The typo is intentional now :^)
-///
-/// The maximum size a font can be in bytes.
-/// This amount of bytes is allocated on the stack each font!
-const FILE_ZIZE: usize = 0x4000;
 
 /// Font flags.
 ///
@@ -88,78 +91,76 @@ pub struct Header {
 /// });
 /// ```
 #[derive(Debug)]
-pub struct Font {
+pub struct Font<'a> {
     /// The font header for this font.
     pub header: Header,
 
     /// The data NOT including the header.
-    data: [u8; FILE_ZIZE - 32],
+    data: &'a [u8],
 
-    /// The size of the original font.
-    /// Useful, since the font will be put into an array 0x4000 (16384) bytes long regardless.
-    size: usize,
+    /// The parsed unicode table.
+    unicode: Option<BTreeMap<[u8; 4], usize>>,
 }
 
-impl Font {
+impl<'a> Font<'a> {
+    /// Converts the unicode table in a font to a hashmap.
+    ///
+    /// # Arguments
+    ///
+    /// * `table` - A byte slice of the actual unicode table.
+    fn parse_unicode_table(table: &[u8]) -> BTreeMap<[u8; 4], usize> {
+        let mut result: BTreeMap<[u8; 4], usize> = BTreeMap::new();
+
+        for (i, entry) in table.split(|x| x == &0xff).enumerate() {
+            let mut iter = entry.iter().enumerate();
+            while let Some((j, byte)) = iter.next() {
+                let utf8_len = match byte >> 4usize {
+                    0xc | 0xd => 2,
+                    0xe => 3,
+                    0xf => 4,
+                    _ => 1,
+                };
+
+                let mut key = [0; 4];
+
+                key[..utf8_len].copy_from_slice(&entry[j..j + utf8_len]);
+                result.insert(key, i);
+
+                for _ in 0..utf8_len - 1 {
+                    if iter.next().is_none() {
+                        break;
+                    }
+                }
+            }
+        }
+
+        result
+    }
+
     /// Gets the glyph index of a character by using the fonts own unicode table.
     /// This index is where the glyph in the font itself.
     ///
     /// # Arguments
     ///
-    /// * `char` - The Unicode Scalar Value of the character you want the index of. (Just cast to u32)
+    /// * `char` - The Unicode Scalar Value of the character you want the index of. (Just cast a char to u32)
     ///
     /// # Panics
     ///
-    /// * If the character can't be described with 2 bytes or less in UTF-8.
-    fn glyph_index(&self, char: u32) -> u32 {
-        // TODO: Make this function faster, since this can take ages.
-
+    /// * If the unicode table flag is set to true, but the table hasn't yet been defined.
+    fn glyph_index(&self, char: u32) -> Option<usize> {
         // Should work for basic ASCII.
         if !self.header.flags.unicode || char < 128 {
-            return char;
+            return Some(char as usize);
         }
 
-        let table = &self.data[(self.header.glyph_size * self.header.length) as usize..self.size];
-        let mut index = 63; // '?' Is a reasonable default.
+        let mut utf8 = [0; 4];
+        char::from_u32(char).unwrap().encode_utf8(&mut utf8);
 
-        for (i, entry) in table.split(|x| x == &0xff).enumerate() {
-            // Rust doesn't expose `encode_utf8_raw` without a feature.
-            // And in interest of keeping this crate on the stable toolchain,
-            // we have to do this less than ideal hack to get it to work.
-            //
-            // We need the `encode_utf8` function to convert the normal
-            // unicode codepoint to valid UTF-8.
-            //
-            // Only allocating 2 bytes because psf2 fonts can only have fonts that
-            // can be described with 2 bytes.
-            let mut utf8 = [0; 4];
-            char::from_u32(char).unwrap().encode_utf8(&mut utf8);
-
-            let mut len = 0;
-            for byte in utf8 {
-                if byte != 0 {
-                    len += 1;
-                }
-            }
-
-            for j in 0..entry.len() {
-                if j + len > entry.len() {
-                    break;
-                }
-
-                let compare = &entry[j..(j + len)];
-
-                // Using a slice of `utf8` is a bit of a hack.
-                // Because we don't need to worry about empty space since a match will always be the exact same size.
-                if compare == &utf8[..compare.len()] {
-                    index = i;
-
-                    break;
-                }
-            }
+        if let Some(unicode) = &self.unicode {
+            unicode.get(&utf8).copied()
+        } else {
+            panic!("unicode table doesn't exist, but header states otherwise")
         }
-
-        index as u32
     }
 
     /// Displays a glyph.
@@ -179,7 +180,8 @@ impl Font {
             panic!("invalid character index")
         };
 
-        let char = self.glyph_index(char);
+        let char = self.glyph_index(char).map_or('?' as usize, |value| value) as u32;
+
         let from = self.header.glyph_size * (char);
         let to = self.header.glyph_size * (char + 1);
 
@@ -208,32 +210,26 @@ impl Font {
     /// * If the magic doesn't match.
     /// * If the file size doesn't is bigger than 0x4000 (16384) bytes.
     #[must_use]
-    pub fn load(raw: &[u8]) -> Self {
-        let size = as_u32_le(&raw[0x8..0xc]);
-
-        // Allocate a slice filled with 0's.
-        // This is a temporary solution that will generally work okay for ASCII fonts.
-        // TODO: Figure out a solution that isn't this hack,
-        // TODO: While still using the stack only.
-        let mut data = [0; FILE_ZIZE];
-
-        // Then copy the font into said slice.
-        // There will be a lot of empty padding.
-        data[..raw.len()].copy_from_slice(raw);
+    pub fn load(raw: &'a [u8]) -> Self {
+        let header_size = as_u32_le(&raw[0x8..0xc]);
+        let header = Header {
+            magic: [raw[0x0], raw[0x1], raw[0x2], raw[0x3]],
+            version: as_u32_le(&raw[0x4..0x8]),
+            size: header_size,
+            flags: Flags::parse(&raw[0xc..0x10]),
+            length: as_u32_le(&raw[0x10..0x14]),
+            glyph_size: as_u32_le(&raw[0x14..0x18]),
+            glyph_height: as_u32_le(&raw[0x18..0x1c]),
+            glyph_width: as_u32_le(&raw[0x1c..0x20]),
+        };
+        let data = &raw[header_size as usize..];
 
         let font = Self {
-            header: Header {
-                magic: [raw[0x0], raw[0x1], raw[0x2], raw[0x3]],
-                version: as_u32_le(&raw[0x4..0x8]),
-                size,
-                flags: Flags::parse(&raw[0xc..0x10]),
-                length: as_u32_le(&raw[0x10..0x14]),
-                glyph_size: as_u32_le(&raw[0x14..0x18]),
-                glyph_height: as_u32_le(&raw[0x18..0x1c]),
-                glyph_width: as_u32_le(&raw[0x1c..0x20]),
-            },
-            data: data[size as usize..].try_into().unwrap(),
-            size: raw.len(),
+            header,
+            data,
+            unicode: Some(Self::parse_unicode_table(
+                &raw[(header.glyph_size * header.length) as usize..],
+            )),
         };
 
         #[allow(clippy::manual_assert)]
