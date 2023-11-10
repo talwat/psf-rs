@@ -23,7 +23,7 @@ use core::panic;
 
 use alloc::collections::BTreeMap;
 
-extern crate alloc;
+pub extern crate alloc;
 
 mod tests;
 
