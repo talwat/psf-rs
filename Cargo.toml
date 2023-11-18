@@ -11,4 +11,11 @@ repository = "https://github.com/talwat/psf-rs"
 readme = "README.md"
 categories = ["embedded", "encoding", "parsing", "no-std", "text-processing"]
 keywords = ["psf2", "tty", "font", "bitmap", "psf"]
+
+[profile.release]
 lto = true
+
+[dependencies]
+ahash = { "version" = "0.8.6", default-features = false }
+hash32 = "0.3.1" # The heapless API is a bit silly.
+heapless = "0.8.0"

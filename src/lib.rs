@@ -21,11 +21,11 @@
 
 use core::panic;
 
-use alloc::collections::BTreeMap;
-
 pub extern crate alloc;
 
 mod tests;
+
+type HashMap = heapless::IndexMap<[u8; 4], usize, hash32::BuildHasherDefault<ahash::AHasher>, 512>;
 
 /// Magic bytes that identify psf2.
 const MAGIC: [u8; 4] = [0x72, 0xb5, 0x4a, 0x86];
@@ -99,7 +99,7 @@ pub struct Font<'a> {
     data: &'a [u8],
 
     /// The parsed unicode table.
-    unicode: Option<BTreeMap<[u8; 4], usize>>,
+    unicode: Option<HashMap>,
 }
 
 impl<'a> Font<'a> {
@@ -108,8 +108,8 @@ impl<'a> Font<'a> {
     /// # Arguments
     ///
     /// * `table` - A byte slice of the actual unicode table.
-    fn parse_unicode_table(table: &[u8]) -> BTreeMap<[u8; 4], usize> {
-        let mut result: BTreeMap<[u8; 4], usize> = BTreeMap::new();
+    fn parse_unicode_table(table: &[u8]) -> HashMap {
+        let mut result: HashMap = HashMap::new();
 
         for (i, entry) in table.split(|x| x == &0xff).enumerate() {
             let mut iter = entry.iter().enumerate();
@@ -124,7 +124,7 @@ impl<'a> Font<'a> {
                 let mut key = [0; 4];
 
                 key[..utf8_len].copy_from_slice(&entry[j..j + utf8_len]);
-                result.insert(key, i);
+                result.insert(key, i).unwrap();
 
                 for _ in 0..utf8_len - 1 {
                     if iter.next().is_none() {
