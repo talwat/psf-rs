@@ -6,12 +6,7 @@
 //! This doesn't support the original psf yet, and currently doesn't support glyphs that aren't 8px wide.
 
 #![no_std]
-#![warn(
-    clippy::all,
-    clippy::pedantic,
-    clippy::nursery,
-    clippy::cargo
-)]
+#![warn(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
 #![allow(
     clippy::cast_possible_truncation,
     clippy::indexing_slicing,
@@ -20,8 +15,6 @@
 )]
 
 use core::panic;
-
-pub extern crate alloc;
 
 mod tests;
 
