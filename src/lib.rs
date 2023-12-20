@@ -212,7 +212,6 @@ impl<'a> Font<'a> {
     ///
     /// * If the file header is incomplete/corrupted in pretty much any way.
     /// * If the magic doesn't match.
-    /// * If the file size doesn't is bigger than 0x4000 (16384) bytes.
     #[must_use]
     pub fn load(raw: &'a [u8]) -> Self {
         let header_size = as_u32_le(&raw[0x8..0xc]);
