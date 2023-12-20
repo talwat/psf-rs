@@ -3,7 +3,7 @@
 //! The psfu format is what's used in the linux tty.
 //! You can find the built in psf2 fonts in /usr/share/kbd/consolefonts.
 //!
-//! This doesn't support the original psf yet, and currently doesn't support glyphs that aren't 8px wide.
+//! This doesn't support the original psf.
 
 #![no_std]
 #![warn(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
@@ -18,7 +18,7 @@ use core::panic;
 
 mod tests;
 
-type HashMap = heapless::IndexMap<[u8; 4], usize, hash32::BuildHasherDefault<ahash::AHasher>, 512>;
+type HashMap = heapless::IndexMap<[u8; 4], usize, hash32::BuildHasherDefault<ahash::AHasher>, 1024>;
 
 /// Magic bytes that identify psf2.
 const MAGIC: [u8; 4] = [0x72, 0xb5, 0x4a, 0x86];
@@ -149,11 +149,11 @@ impl<'a> Font<'a> {
         let mut utf8 = [0; 4];
         char::from_u32(char).unwrap().encode_utf8(&mut utf8);
 
-        if let Some(unicode) = &self.unicode {
-            unicode.get(&utf8).copied()
-        } else {
-            panic!("unicode table doesn't exist, but header states otherwise")
-        }
+        self.unicode
+            .as_ref()
+            .expect("unicode table doesn't exist, but header states otherwise")
+            .get(&utf8)
+            .copied()
     }
 
     /// Displays a glyph.
@@ -178,15 +178,29 @@ impl<'a> Font<'a> {
         let from = self.header.glyph_size * (char);
         let to = self.header.glyph_size * (char + 1);
 
-        for (i, byte) in self.data[from as usize..to as usize].iter().enumerate() {
-            for j in 0..8 {
-                // Bit is a u8 that is always either a 0 or a 1.
-                // "But why not use a boolean?" I hear you ask.
-                // Every variable in rust is always at least one byte in size,
-                // So it doesn't do much for saving memory.
-                let bit = (byte >> (7 - j)) & 1;
+        let data = &self.data[from as usize..to as usize];
+        let bytes_in_row = ((self.header.glyph_width as usize + 7) & !7) / 8;
 
-                action(bit, j, i as u8);
+        for (i, row) in data
+            .chunks(bytes_in_row)
+            .enumerate()
+        {
+            'row: for (j, byte) in row.iter().enumerate() {
+                for k in 0..8 {
+                    let x = (j as u8 * 8) + k;
+
+                    if x as u32 > self.header.glyph_width {
+                        break 'row;
+                    }
+
+                    // Bit is a u8 that is always either a 0 or a 1.
+                    // "But why not use a boolean?" I hear you ask.
+                    // Every variable in rust is always at least one byte in size,
+                    // So it doesn't do much for saving memory.
+                    let bit = (byte >> (7 - k)) & 1;
+
+                    action(bit, x, i as u8);
+                }
             }
         }
     }
@@ -225,10 +239,10 @@ impl<'a> Font<'a> {
             )),
         };
 
-        #[allow(clippy::manual_assert)]
-        if font.header.magic != MAGIC {
-            panic!("header magic does not match, is this a psf2 font?");
-        }
+        assert!(
+            font.header.magic == MAGIC,
+            "header magic does not match, is this a psf2 font?"
+        );
 
         font
     }
@@ -236,6 +250,11 @@ impl<'a> Font<'a> {
 
 /// Converts an array of u8's into one u32.
 const fn as_u32_le(array: &[u8]) -> u32 {
+    assert!(
+        array.len() > 3,
+        "`array` needs to have four elements or more"
+    );
+
     (array[0] as u32)
         + ((array[1] as u32) << 8u32)
         + ((array[2] as u32) << 16u32)
