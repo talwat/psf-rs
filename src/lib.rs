@@ -181,10 +181,7 @@ impl<'a> Font<'a> {
         let data = &self.data[from as usize..to as usize];
         let bytes_in_row = ((self.header.glyph_width as usize + 7) & !7) / 8;
 
-        for (i, row) in data
-            .chunks(bytes_in_row)
-            .enumerate()
-        {
+        for (i, row) in data.chunks(bytes_in_row).enumerate() {
             'row: for (j, byte) in row.iter().enumerate() {
                 for k in 0..8 {
                     let x = (j as u8 * 8) + k;

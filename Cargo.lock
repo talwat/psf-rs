@@ -62,7 +62,7 @@ dependencies = [
 
 [[package]]
 name = "psf-rs"
-version = "2.1.4"
+version = "2.2.0"
 dependencies = [
  "ahash",
  "hash32",
